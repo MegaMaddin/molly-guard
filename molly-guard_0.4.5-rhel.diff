@@ -1,0 +1,263 @@
+diff -bwurN molly-guard-0.4.5.orig/Makefile molly-guard-0.4.5/Makefile
+--- molly-guard-0.4.5.orig/Makefile	2012-02-23 23:59:43.000000000 +0100
++++ molly-guard-0.4.5/Makefile	2013-04-16 21:52:56.935701949 +0200
+@@ -2,10 +2,12 @@
+ etc_prefix?=$(prefix)
+ DST=$(DEST)$(prefix)
+ ETCDIR=$(DEST)$(etc_prefix)/etc/molly-guard
++SYSCONFDIR=$(DEST)$(etc_prefix)/etc/sysconfig
++PROFILEDIR=$(DEST)$(etc_prefix)/etc/profile.d
+ 
+-all: molly-guard.8.gz shutdown
++all: molly-guard.8.gz shutdown profile-molly-guard.sh
+ 
+-%.8: DB2MAN=/usr/share/sgml/docbook/stylesheet/xsl/nwalsh/manpages/docbook.xsl
++%.8: DB2MAN=/usr/share/sgml/docbook/xsl-stylesheets/manpages/docbook.xsl
+ %.8: XP=xsltproc -''-nonet
+ %.8: %.xml
+ 	$(XP) $(DB2MAN) $<
+@@ -20,28 +22,33 @@
+ clean:
+ 	rm -f shutdown
+ 	rm -f molly-guard.8 molly-guard.8.gz
++	rm -f profile-molly-guard.sh
+ .PHONY: clean
+ 
++profile-molly-guard.sh: profile-molly-guard.sh.in
++	sed -e 's,@SYSCONFDIR@,$(SYSCONFDIR),' -e 's,@DST@,$(DST),' $< > $@
++
+ shutdown: shutdown.in
+-	sed -e 's,@ETCDIR@,$(ETCDIR),g' $< > $@
++	sed -e 's,@SYSCONFDIR@,$(SYSCONFDIR),' -e 's,@ETCDIR@,$(ETCDIR),g' $< > $@
+ 
+-install: shutdown molly-guard.8.gz
++install: shutdown molly-guard.8.gz profile-molly-guard.sh
+ 	mkdir -m755 --parent $(DST)/share/molly-guard
+-	install -m755 -oroot -oroot shutdown $(DST)/share/molly-guard
++	install -m755 shutdown $(DST)/share/molly-guard
++	ln -s shutdown $(DST)/share/molly-guard/reboot
++	ln -s shutdown $(DST)/share/molly-guard/halt
++	ln -s shutdown $(DST)/share/molly-guard/poweroff
++
++	mkdir -m755 --parent $(SYSCONFDIR)
++	install -m644 sysconfig $(SYSCONFDIR)/molly-guard
+ 
+-	mkdir -m755 --parent $(DST)/sbin
+-	ln -s ../share/molly-guard/shutdown $(DST)/sbin/poweroff
+-	ln -s ../share/molly-guard/shutdown $(DST)/sbin/halt
+-	ln -s ../share/molly-guard/shutdown $(DST)/sbin/reboot
+-	ln -s ../share/molly-guard/shutdown $(DST)/sbin/shutdown
++	mkdir -m755 --parent $(PROFILEDIR)
++	install -m644 profile-molly-guard.sh $(PROFILEDIR)/molly-guard.sh
+ 
+ 	mkdir -m755 --parent $(ETCDIR)
+-	install -m644 -oroot -oroot rc $(ETCDIR)
+-	cp -r run.d $(ETCDIR) \
+-	  && chown root.root $(ETCDIR)/run.d && chmod 755 $(ETCDIR)/run.d
++	cp -r run.d $(ETCDIR)
+ 
+ 	mkdir -m755 --parent $(ETCDIR)/messages.d
+ 
+ 	mkdir -m755 --parent $(DST)/share/man/man8
+-	install -m644 -oroot -groot molly-guard.8.gz $(DST)/share/man/man8
++	install -m644 molly-guard.8.gz $(DST)/share/man/man8
+ .PHONY: install
+diff -bwurN molly-guard-0.4.5.orig/molly-guard.xml molly-guard-0.4.5/molly-guard.xml
+--- molly-guard-0.4.5.orig/molly-guard.xml	2012-02-23 23:59:43.000000000 +0100
++++ molly-guard-0.4.5/molly-guard.xml	2013-04-05 15:56:53.529488500 +0200
+@@ -30,7 +30,7 @@
+   <!ENTITY dhfirstname "<firstname>martin f.</firstname>">
+   <!ENTITY dhsurname   "<surname>krafft</surname>">
+   <!-- Please adjust the date whenever revising the manpage. -->
+-  <!ENTITY dhdate      "<date>Apr 19, 2008</date>">
++  <!ENTITY dhdate      "<date>Apr 19, 2013</date>">
+   <!-- SECTION should be 1-8, maybe w/ subsection other parameters are
+        allowed: see man(7), man(1). -->
+   <!ENTITY dhsection   "<manvolnum>8</manvolnum>">
+@@ -46,6 +46,9 @@
+ ]>
+ 
+ <refentry>
++  <info>
++    <productname>&dhpackage;</productname>
++  </info>
+   <refentryinfo>
+     <address>
+       &dhemail;
+@@ -58,7 +61,7 @@
+   </refentryinfo>
+   <refmeta>
+     &dhucpackage;
+-
++    <refmiscinfo class='manual'>&dhpackage; documentation</refmiscinfo>
+     &dhsection;
+   </refmeta>
+   <refnamediv>
+@@ -125,15 +128,19 @@
+       or rebooting machines. It does this by injecting a couple of checks
+       before the existing commands: <command>halt</command>,
+       <command>reboot</command>, <command>shutdown</command>, and
+-      <command>poweroff</command>. This happens via scripts with the same
+-      names in <filename>/usr/sbin</filename>, so it only works if you have
+-      <filename>/usr/sbin</filename> before <filename>/sbin</filename> in your
+-      <envar>PATH</envar>!</para>
++      <command>poweroff</command>. This happens via <command>alias</command> in your shell
++      environment. The aliases are calling names in
++      <filename>/usr/share/molly-guard</filename> correspondenting to the
++      executed command.</para>
+ 
+     <para> Before &dhcommand; invokes the real command, all scripts in
+       <filename>/etc/molly-guard/run.d/</filename> have to run and exit
+       successfully; else, it aborts the command.
+-      <command>run-parts(1)</command> is used to process the directory.</para>
++      <command>find(1)</command> is used to process the directory.</para>
++
++    <para> Before you can use &dhcommand; on rpm based systems like fedora or
++    RHEL, you have to enable &dhcommand; via <filename>/etc/sysconfig/molly-guard</filename>
++    and re-login into your system.</para> 
+ 
+     <para> &dhcommand; passes any <replaceable>script_options</replaceable> to the
+       scripts, and also populates the environment with the following
+@@ -177,7 +184,7 @@
+     <para> You can pass the <option>--pretend-ssh</option> script option to
+       &dhcommand; to pretend that those tests succeeds. Alternatively, setting
+       <envar>ALWAYS_QUERY_HOSTNAME</envar> in
+-      <filename>/etc/molly-guard/rc</filename> causes the script to
++      <filename>/etc/sysconfig/molly-guard</filename> causes the script to
+       always query.</para>
+ 
+     <para> The following situations are still UNGUARDED. If you can think of
+@@ -238,6 +245,34 @@
+   </refsect1>
+ 
+   <refsect1>
++    <title>FILES</title>
++    <para><filename>/etc/sysconfig/&dhpackage;</filename></para>
++  </refsect1>
++
++  <refsect1>
++    <title>AUTHORS</title>
++
++    <para>
++      &dhpackage; was intially developed by &dhusername; for Debian GNU/Linux.
++      Andrew Ruthven came up with the idea of using the scripts directory
++      and submitted a patch, which I modified a bit.
++
++      The rpm based package was initially refactored by Martin Probst.
++    </para>
++
++    <para>
++      This manual page was written by &dhusername; &dhemail;
++      and later revised by Martin Probst for rpm distribution.
++    </para>
++
++    <para>
++      Permission is granted to copy, distribute and/or modify this document
++      under the terms of the Artistic License 2.0
++    </para>
++
++  </refsect1>
++
++  <refsect1>
+     <title>SEE ALSO</title>
+     <para>
+       <citerefentry>
+@@ -259,23 +294,4 @@
+     </para>
+   </refsect1>
+ 
+-  <refsect1>
+-    <title>LEGALESE</title>
+-
+-    <para>
+-      &dhpackage; is copyright by &dhusername;. Andrew Ruthven came up with
+-      the idea of using the scripts directory and submitted a patch, which
+-      I modified a bit.
+-    </para>
+-
+-    <para>
+-      This manual page was written by &dhusername; &dhemail;.
+-    </para>
+-
+-    <para>
+-      Permission is granted to copy, distribute and/or modify this document
+-      under the terms of the Artistic License 2.0
+-    </para>
+-
+-  </refsect1>
+ </refentry>
+diff -bwurN molly-guard-0.4.5.orig/profile-molly-guard.sh.in molly-guard-0.4.5/profile-molly-guard.sh.in
+--- molly-guard-0.4.5.orig/profile-molly-guard.sh.in	1970-01-01 01:00:00.000000000 +0100
++++ molly-guard-0.4.5/profile-molly-guard.sh.in	2013-04-05 13:56:01.527470088 +0200
+@@ -0,0 +1,32 @@
++# molly-guard initialization script for redhat based systems
++# Copyright (C) Martin Probst <github@megamaddin.org>
++# Released under the terms of the Artistic Licence 2.0
++#
++# This script checks if molly guard is enabled and adds
++# the needed binay calls as bash aliases through the environment.
++
++if [ "$EUID" = "0" ]
++then
++    MOLLY_GUARD_SYSCONFIG=@SYSCONFDIR@/molly-guard
++    MOLLY_GUARDED_FUNCS=(halt reboot shutdown poweroff)
++    MOLLY_GUARD_DIR=@DST@/share/molly-guard
++
++    if [ -r "$MOLLY_GUARD_SYSCONFIG" ]
++    then
++        . $MOLLY_GUARD_SYSCONFIG
++    fi
++
++    if [ -n "$MOLLY_GUARD_ENABLED" ]
++    then
++        case $MOLLY_GUARD_ENABLED in
++            [Yy][Ee][Ss])
++                for FUNC in ${MOLLY_GUARDED_FUNCS[*]}
++                do
++                    eval "alias $FUNC='$MOLLY_GUARD_DIR/$FUNC'"
++                done
++                ;;
++            *)
++                ;;
++        esac
++    fi
++fi
+diff -bwurN molly-guard-0.4.5.orig/rc molly-guard-0.4.5/rc
+--- molly-guard-0.4.5.orig/rc	2012-02-23 23:59:43.000000000 +0100
++++ molly-guard-0.4.5/rc	1970-01-01 01:00:00.000000000 +0100
+@@ -1,6 +0,0 @@
+-# molly-guard settings
+-#
+-# ALWAYS_QUERY_HOSTNAME
+-# when set, causes the 30-query-hostname script to always ask for the
+-# hostname, even if no SSH session was detected.
+-#ALWAYS_QUERY_HOSTNAME=true
+diff -bwurN molly-guard-0.4.5.orig/shutdown.in molly-guard-0.4.5/shutdown.in
+--- molly-guard-0.4.5.orig/shutdown.in	2012-02-23 23:59:43.000000000 +0100
++++ molly-guard-0.4.5/shutdown.in	2013-03-29 16:27:10.712987970 +0100
+@@ -104,9 +104,9 @@
+ 
+ MOLLYGUARD_CMD=$CMD; export MOLLYGUARD_CMD
+ MOLLYGUARD_DO_NOTHING=$DO_NOTHING; export MOLLYGUARD_DO_NOTHING
+-MOLLYGUARD_SETTINGS="@ETCDIR@/rc"; export MOLLYGUARD_SETTINGS
++MOLLYGUARD_SETTINGS="@SYSCONFDIR@/molly-guard"; export MOLLYGUARD_SETTINGS
+ 
+-for script in $(run-parts --test $SCRIPTSDIR); do
++for script in $(find $SCRIPTSDIR -type f -executable); do
+   ret=0
+   eval $script $SCRIPTARGS || ret=$?
+   if [ $ret -ne 0 ]; then
+diff -bwurN molly-guard-0.4.5.orig/sysconfig molly-guard-0.4.5/sysconfig
+--- molly-guard-0.4.5.orig/sysconfig	1970-01-01 01:00:00.000000000 +0100
++++ molly-guard-0.4.5/sysconfig	2013-03-29 16:37:52.034985027 +0100
+@@ -0,0 +1,10 @@
++# molly-guard settings
++#
++# MOLLY_GUARD_ENABLED
++# when set, activate molly-guard for privileged remote logins.
++#MOLLY_GUARD_ENABLED=Yes
++#
++# ALWAYS_QUERY_HOSTNAME
++# when set, causes the 30-query-hostname script to always ask for the
++# hostname, even if no SSH session was detected.
++#ALWAYS_QUERY_HOSTNAME=true
